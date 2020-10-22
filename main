@@ -1,0 +1,173 @@
+package calculator
+import java.math.BigInteger
+var hafizaYeni = mutableMapOf<String, String>() //memory(hafizaEski, numlist)
+
+fun main() {
+    do {
+        var scan = readLine()!!.trim()
+        var ham = Regex("""(?=([-](?=\d)\d+))|\s|(?=[\=*\/\(^\)]+)|(?<=[\=\(^\)])|(?=[+-]+)""").replace(scan," ").trim()
+        var numlist = ham.replace("\\s+".toRegex(), " ").split(" ").toMutableList()
+        when {
+            scan == "/help" -> println("The program calculates the sum of numbers")
+            scan == "/exit" -> println("Bye!")
+            scan.isNullOrEmpty() || scan.isBlank() -> {}
+            scan.first() == '/' -> println("Unknown command")
+            scan.last() == '+' || scan.last() == '-' -> println("Invalid expression")
+            scan.contains("=") -> hafizaYeni = memory(hafizaYeni, numlist)
+            else -> println(arrange(hafizaYeni, numlist))
+        }
+    } while(scan != "/exit")
+}
+
+fun memory(hafizaYeni: MutableMap<String, String>, numlist: MutableList<String>): MutableMap<String, String> {
+    val hafiza = mutableMapOf<String, String>()
+    when(numlist.size) {
+        3 -> when {
+            isDigits(numlist[0]) && isDigits(numlist[2]) -> println("Invalid identifier")
+            isDigits(numlist[0]) && isLetters(numlist[2]) -> hafiza[numlist[2]] = numlist[0]
+            isLetters(numlist[0]) && isDigits(numlist[2]) -> hafiza[numlist[0]] = numlist[2]
+            isLetters(numlist[0]) && isLetters(numlist[2]) -> {
+                if (hafizaYeni.contains(numlist[2])) { hafiza[numlist[0]] = hafizaYeni[numlist[2]]!!
+                } else if (hafizaYeni.contains(numlist[0])) { hafiza[numlist[2]] = hafizaYeni[numlist[0]]!!
+                } else { println("Invalid assignment") }
+            }
+            else -> println("Invalid assignment")
+        }
+        0 -> {}
+        1 -> { if (hafizaYeni.contains(numlist[0])) println(hafizaYeni[numlist[0]])
+        else if (numlist[0] != "") println("Unknown variable") }
+        else -> { println("Invalid assignment") }
+    }
+    hafizaYeni += hafiza
+    return hafizaYeni // + hafiza
+}
+
+fun isLetters(string: String): Boolean = string.matches("""^[a-zA-Z]*$""".toRegex())
+fun isDigits(string: String): Boolean = string.matches("""-?\d+(\.\d+)?""".toRegex())
+fun isBigInteger(string: String): Boolean = string.matches("""[+-]?\d{9,}(\.\d+)?""".toRegex())
+
+fun preced(string: String): Int {
+    if (string == "+" || string == "-") return 1
+    if (string == "*" || string == "/") return 2
+    return if (string == "^") 3 else 0
+}
+
+fun arrange(hafizaYeni:MutableMap<String, String>, numlist: MutableList<String>): String {
+    var i = 0
+    var cnt = 0
+    while (i <= numlist.size - 1) {
+        when {
+            numlist[i] == "-" && numlist[i+1] == "-" -> { numlist[i] = "+"; numlist.removeAt(i+1) }
+            numlist[i] == "+" && numlist[i+1] == "+" -> numlist.removeAt(i)
+            numlist[i] == "-" && numlist[i+1] == "+" -> numlist.removeAt(i+1)
+            numlist[i] == "+" && numlist[i+1] == "-" -> numlist.removeAt(i)
+            numlist[i] == "(" -> { cnt++; i++ }
+            numlist[i] == ")" -> { cnt--; i++ }
+            numlist[i] == "*" && numlist[i+1] == "*" -> return "Invalid expression"
+            numlist[i] == "/" && numlist[i+1] == "/" -> return "Invalid expression"
+            else -> i++
+        }
+    }
+    if (cnt != 0) { return "Invalid expression" }
+////////////////////////////////////////////////////////////
+// infix to postfix operations
+    var stk = mutableListOf("#")			// stack
+    val postfix = mutableListOf<String>() 			// postfix notation
+    for (elem in numlist) {
+        when {
+            isDigits(elem) -> postfix.add(elem)
+            isLetters(elem) -> {
+                if (hafizaYeni.contains(elem)) {
+                    postfix.add(hafizaYeni[elem]!!)
+                } else {
+                    return "Unknown variable"
+                }
+            }
+            elem == "(" -> stk.add(elem)
+            elem == ")" -> {
+                while (stk.last() != "#" && stk.last() != "(") {
+                    postfix.add(stk.last())
+                    stk = stk.dropLast(1).toMutableList()
+                }
+                stk = stk.dropLast(1).toMutableList()
+            }
+            preced(elem) == preced(stk.last()) -> {
+                postfix.add(stk.last())
+                stk = stk.dropLast(1).toMutableList()
+                stk.add(elem)
+            }
+            preced(elem) > preced(stk.last()) -> stk.add(elem)
+            else -> {
+                while (stk.last() != "#" && preced(elem) < preced(stk.last())) {
+                    postfix.add(stk.last())
+                    stk = stk.dropLast(1).toMutableList()
+                }
+                stk.add(elem)
+            }
+        }
+    }
+    while (stk.last() != "#") {
+         when {
+             stk.last() == "" -> stk = stk.dropLast(1).toMutableList()
+             else -> {
+                 postfix.add(stk.last())
+                 stk = stk.dropLast(1).toMutableList()
+             }
+         }
+     }
+    //////////////////////////////////
+    if (postfix.any { isBigInteger(it) }) return calcBigInt(postfix)
+    return calculate(postfix)
+}
+
+fun calculate(postfix: MutableList<String>): String {
+    var res = 0
+    var exponent: Int
+    var skor = mutableListOf<Int>()
+    for (a in 0..postfix.lastIndex) {
+        when {
+            isDigits(postfix[a]) -> skor.add(postfix[a].toInt())
+            postfix[a] == "-" -> { res = skor.last(); skor = skor.dropLast(1).toMutableList(); res = skor.last() - res; skor = skor.dropLast(1).toMutableList(); skor.add(res) }
+            postfix[a] == "+" -> { res = skor.last(); skor = skor.dropLast(1).toMutableList(); res += skor.last(); skor = skor.dropLast(1).toMutableList(); skor.add(res) }
+            postfix[a] == "/" -> { res = skor.last(); skor = skor.dropLast(1).toMutableList(); res = skor.last() / res; skor = skor.dropLast(1).toMutableList(); skor.add(res) }
+            postfix[a] == "*" -> { res = skor.last(); skor = skor.dropLast(1).toMutableList(); res *= skor.last(); skor = skor.dropLast(1).toMutableList(); skor.add(res) }
+            postfix[a] == "^" -> { exponent = skor.last(); skor = skor.dropLast(1).toMutableList(); res = skor.last()
+                while (exponent != 1) {
+                    res *= skor.last()
+                    --exponent
+                }
+                skor = skor.dropLast(1).toMutableList()
+                skor.add(res)
+            }
+            else -> { return "Hi There!" }
+        }
+    }
+    if (skor.last() != null) res = skor.last()
+    return res.toString()
+}
+
+fun calcBigInt(postfix: MutableList<String>): String {
+    var res = BigInteger.ZERO
+    var exponent: BigInteger
+    var skor = mutableListOf<BigInteger>()
+    for (a in 0..postfix.lastIndex) {
+        when {
+            isDigits(postfix[a]) -> skor.add(postfix[a].toBigInteger())
+            postfix[a] == "-" -> { res = skor.last(); skor = skor.dropLast(1).toMutableList(); res = skor.last() - res; skor = skor.dropLast(1).toMutableList(); skor.add(res) }
+            postfix[a] == "+" -> { res = skor.last(); skor = skor.dropLast(1).toMutableList(); res += skor.last(); skor = skor.dropLast(1).toMutableList(); skor.add(res) }
+            postfix[a] == "/" -> { res = skor.last(); skor = skor.dropLast(1).toMutableList(); res = skor.last() / res; skor = skor.dropLast(1).toMutableList(); skor.add(res) }
+            postfix[a] == "*" -> { res = skor.last(); skor = skor.dropLast(1).toMutableList(); res *= skor.last(); skor = skor.dropLast(1).toMutableList(); skor.add(res) }
+            postfix[a] == "^" -> { exponent = skor.last(); skor = skor.dropLast(1).toMutableList(); res = skor.last()
+                while (exponent != BigInteger.ONE) {
+                    res *= skor.last()
+                    --exponent
+                }
+                skor = skor.dropLast(1).toMutableList()
+                skor.add(res)
+            }
+            else -> { return "Hi There!" }
+        }
+    }
+    if (skor.last() != null) res = skor.last()
+    return res.toString()
+}
